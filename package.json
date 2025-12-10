@@ -12,12 +12,9 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
-    "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.555.0",
-    "lz-string": "^1.5.0",
     "react": "^19.2.1",
-    "react-dom": "^19.2.1",
-    "react-qr-code": "^2.0.18"
+    "react-dom": "^19.2.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

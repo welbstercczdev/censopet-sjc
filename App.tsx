@@ -12,7 +12,7 @@ import { CensusFormData, CensusRecord, AgentInfo } from './types';
 import { ClipboardList, ChevronLeft } from 'lucide-react';
 import { uuidv7 } from './services/uuidService';
 
-// Estado inicial atualizado com campos de vacinação
+// Estado inicial com suporte a vacinação
 const getInitialData = (): CensusFormData => ({
   endereco: {
     cep: '',
@@ -156,7 +156,7 @@ const App: React.FC = () => {
         // Create new record using UUIDv7
         const newRecord: CensusRecord = {
             ...formData,
-            id: uuidv7(), // Usando UUIDv7 para ordenação temporal
+            id: uuidv7(), // Usando UUIDv7 para ordenação temporal e unicidade
             timestamp: new Date().toISOString(),
             deviceInfo: navigator.userAgent,
             agentName: currentAgentName,
@@ -200,11 +200,12 @@ const App: React.FC = () => {
     const sanitizedId = agentInfo.id.replace(/[^a-zA-Z0-9]/g, '-');
 
     const fileName = `CensoPet_${sanitizedName}_${sanitizedId}_${dateStr}_${timeStr}.json`;
-    
     const dataStr = JSON.stringify(recordsToExport, null, 2);
+    
     const blob = new Blob([dataStr], { type: "application/json" });
     const file = new File([blob], fileName, { type: "application/json" });
 
+    // Tenta compartilhamento nativo primeiro
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({
@@ -214,10 +215,11 @@ const App: React.FC = () => {
         });
         return;
       } catch (e) {
-        console.log("Share failed or cancelled", e);
+        console.warn("Compartilhamento nativo falhou ou cancelado, iniciando download...", e);
       }
     }
     
+    // Fallback para download direto
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -228,7 +230,7 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  // Função centralizada para processar dados importados (seja por Arquivo ou QR)
+  // Função centralizada para processar dados importados
   const processImportedData = (importedData: any[]) => {
       if (!Array.isArray(importedData)) {
           alert("Formato de dados inválido.");
@@ -321,8 +323,7 @@ const App: React.FC = () => {
               agentInfo={agentInfo}
               onStartNew={startNewCensus}
               onExport={handleExport}
-              onImport={processImportedData} // Passa a função que aceita dados do QR
-              onImportFile={handleFileImport} // Passa a função que aceita File
+              onImportFile={handleFileImport}
               onClear={handleClear}
               onEdit={handleEditRecord}
               onDelete={handleDeleteRecord}
