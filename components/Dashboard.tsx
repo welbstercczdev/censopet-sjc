@@ -1,13 +1,17 @@
-import React, { useRef } from 'react';
-import { Plus, Download, Share2, Trash2, Database, FileJson, Pencil, MapPin, Calendar, ChevronLeft, ChevronRight, Upload, User, Settings } from 'lucide-react';
+// --- START OF FILE components/Dashboard.tsx ---
+
+import React, { useRef, useState } from 'react';
+import { Plus, Download, Share2, Trash2, Database, FileJson, Pencil, MapPin, Calendar, ChevronLeft, ChevronRight, Upload, User, Settings, QrCode } from 'lucide-react';
 import { CensusRecord, AgentInfo } from '../types';
+import SyncModal from './SyncModal';
 
 interface DashboardProps {
   records: CensusRecord[];
   agentInfo: AgentInfo | null;
   onStartNew: () => void;
   onExport: () => void;
-  onImport: (file: File) => void;
+  onImport: (data: CensusRecord[]) => void; // Para dados do QR Code
+  onImportFile: (file: File) => void;       // Para upload de arquivo
   onClear: () => void;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
@@ -16,8 +20,9 @@ interface DashboardProps {
 
 const ITEMS_PER_PAGE = 5;
 
-const Dashboard: React.FC<DashboardProps> = ({ records, agentInfo, onStartNew, onExport, onImport, onClear, onEdit, onDelete, onOpenAgentConfig }) => {
+const Dashboard: React.FC<DashboardProps> = ({ records, agentInfo, onStartNew, onExport, onImport, onImportFile, onClear, onEdit, onDelete, onOpenAgentConfig }) => {
   const [currentPage, setCurrentPage] = React.useState(1);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const totalRecords = records.length;
@@ -43,7 +48,7 @@ const Dashboard: React.FC<DashboardProps> = ({ records, agentInfo, onStartNew, o
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      onImport(e.target.files[0]);
+      onImportFile(e.target.files[0]);
     }
     // Reset input
     if (fileInputRef.current) {
@@ -108,26 +113,39 @@ const Dashboard: React.FC<DashboardProps> = ({ records, agentInfo, onStartNew, o
         </button>
 
         {/* Secondary Actions Grid */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-2">
+          {/* Botão Exportar (Arquivo/Share) */}
           <button
             onClick={onExport}
             disabled={totalRecords === 0}
-            className="flex flex-col items-center justify-center p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex flex-col items-center justify-center p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <div className="mb-2 p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">
-                {navigator.share ? <Share2 size={20} /> : <Download size={20} />}
+            <div className="mb-1 p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">
+                {navigator.share ? <Share2 size={18} /> : <Download size={18} />}
             </div>
-            <span>{navigator.share ? 'Compartilhar' : 'Exportar'}</span>
+            <span className="text-xs sm:text-sm">{navigator.share ? 'Enviar' : 'Arquivo'}</span>
           </button>
 
+          {/* Botão QR Code (Novo) */}
+          <button
+            onClick={() => setIsQrModalOpen(true)}
+            className="flex flex-col items-center justify-center p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium rounded-xl transition-colors"
+          >
+             <div className="mb-1 p-2 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full">
+                <QrCode size={18} />
+            </div>
+            <span className="text-xs sm:text-sm">QR Code</span>
+          </button>
+
+          {/* Botão Importar Arquivo */}
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex flex-col items-center justify-center p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium rounded-xl transition-colors"
+            className="flex flex-col items-center justify-center p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium rounded-xl transition-colors"
           >
-             <div className="mb-2 p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full">
-                <Upload size={20} />
+             <div className="mb-1 p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full">
+                <Upload size={18} />
             </div>
-            <span>Importar</span>
+            <span className="text-xs sm:text-sm">Ler Arq.</span>
           </button>
         </div>
 
@@ -151,11 +169,19 @@ const Dashboard: React.FC<DashboardProps> = ({ records, agentInfo, onStartNew, o
         className="hidden" 
       />
 
+      {/* Modal de Sincronização via QR */}
+      <SyncModal 
+        isOpen={isQrModalOpen}
+        onClose={() => setIsQrModalOpen(false)}
+        dataToExport={records}
+        onImportData={onImport}
+      />
+
       {totalRecords > 0 && (
           <>
             <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-lg text-xs text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-800 flex items-start">
                 <FileJson size={16} className="mr-2 flex-shrink-0 mt-0.5" />
-                <p>Use "Compartilhar" para enviar ao líder. O nome do arquivo será gerado automaticamente com sua identificação.</p>
+                <p>Use "Enviar" ou "QR Code" para transferir os dados para o líder da equipe.</p>
             </div>
 
             {/* List of Records */}
@@ -182,10 +208,17 @@ const Dashboard: React.FC<DashboardProps> = ({ records, agentInfo, onStartNew, o
                                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                                             {record.endereco.bairro}
                                         </p>
-                                        <p className="text-xs text-gray-400 flex items-center mt-1">
-                                            <Calendar size={10} className="mr-1" />
-                                            {new Date(record.timestamp).toLocaleString('pt-BR')}
-                                        </p>
+                                        <div className="flex items-center mt-1 space-x-2">
+                                            <p className="text-xs text-gray-400 flex items-center">
+                                                <Calendar size={10} className="mr-1" />
+                                                {new Date(record.timestamp).toLocaleString('pt-BR')}
+                                            </p>
+                                            {record.agentName && (
+                                              <span className="text-[10px] bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-300 px-1.5 py-0.5 rounded truncate max-w-[100px]">
+                                                {record.agentName}
+                                              </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>

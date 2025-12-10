@@ -3,22 +3,26 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// O nome do repositório no GitHub
+const BASE_PATH = '/censopet-sjc/';
+
 export default defineConfig({
+  base: BASE_PATH, // Importante para o GitHub Pages
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate', // Atualiza o app automaticamente quando houver nova versão
+      registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
         name: 'CensoPet SJC',
         short_name: 'CensoPet',
         description: 'Aplicativo de censo e controle animal',
-        theme_color: '#0ea5e9', // Cor brand-500
+        theme_color: '#0ea5e9',
         background_color: '#ffffff',
-        display: 'standalone', // Remove a barra de URL do navegador (aparência de app nativo)
+        display: 'standalone',
         orientation: 'portrait',
-        scope: '/',
-        start_url: '/',
+        scope: BASE_PATH, // Ajustado para o caminho do repo
+        start_url: BASE_PATH, // Ajustado para o caminho do repo
         icons: [
           {
             src: 'pwa-192x192.png',
@@ -83,7 +87,7 @@ export default defineConfig({
               }
             }
           },
-          // Cache para Lucide React Icons (se forem carregados via CDN como no seu importmap)
+          // Cache para Lucide React Icons (se forem carregados via CDN)
           {
             urlPattern: /^https:\/\/aistudiocdn\.com\/.*/i,
             handler: 'StaleWhileRevalidate',

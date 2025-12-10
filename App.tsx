@@ -1,3 +1,5 @@
+// --- START OF FILE App.tsx ---
+
 import React, { useState, useEffect } from 'react';
 import AddressForm from './components/AddressForm';
 import AnimalForm from './components/AnimalForm';
@@ -5,10 +7,12 @@ import Summary from './components/Summary';
 import Dashboard from './components/Dashboard';
 import ThemeToggle from './components/ThemeToggle';
 import AgentConfig from './components/AgentConfig';
+import InstallPWA from './components/InstallPWA';
 import { CensusFormData, CensusRecord, AgentInfo } from './types';
 import { ClipboardList, ChevronLeft } from 'lucide-react';
 import { uuidv7 } from './services/uuidService';
 
+// Estado inicial atualizado com campos de vacinação
 const getInitialData = (): CensusFormData => ({
   endereco: {
     cep: '',
@@ -123,17 +127,17 @@ const App: React.FC = () => {
   };
 
   const handleSave = () => {
-    // Validação de segurança: Agente deve estar identificado
+    // Validação de segurança: Agente deve estar identificado para novos registros
     if (!agentInfo && !editingId) {
         setIsAgentModalOpen(true);
-        return; // Impede salvar sem agente
+        return; 
     }
 
     const currentAgentName = agentInfo?.name || 'Não Identificado';
     const currentAgentId = agentInfo?.id || 'N/A';
 
     if (editingId) {
-        // Atualizar registro existente
+        // Update existing record
         setRecords(prev => prev.map(record => {
             if (record.id === editingId) {
                 return {
@@ -141,18 +145,18 @@ const App: React.FC = () => {
                     ...formData,
                     timestamp: new Date().toISOString(),
                     deviceInfo: navigator.userAgent,
-                    // Mantém o agente original se já existir, senão usa o atual
-                    agentName: record.agentName || currentAgentName, 
+                    // Mantém o agente original se existir, senão assume o atual
+                    agentName: record.agentName || currentAgentName,
                     agentId: record.agentId || currentAgentId
                 };
             }
             return record;
         }));
     } else {
-        // Criar novo registro USANDO UUIDv7
+        // Create new record using UUIDv7
         const newRecord: CensusRecord = {
             ...formData,
-            id: uuidv7(), // <--- MUDANÇA AQUI (antes era crypto.randomUUID())
+            id: uuidv7(), // Usando UUIDv7 para ordenação temporal
             timestamp: new Date().toISOString(),
             deviceInfo: navigator.userAgent,
             agentName: currentAgentName,
@@ -162,12 +166,12 @@ const App: React.FC = () => {
     }
     
     setEditingId(null);
-    setStep(0);
+    setStep(0); // Go back to dashboard
   };
 
   const handleBackToDashboard = () => {
     if (step === 1) {
-        setEditingId(null); // Clear editing state if canceling
+        setEditingId(null);
         setStep(0);
     } else {
         setStep(step - 1);
@@ -175,28 +179,32 @@ const App: React.FC = () => {
   };
 
   const handleExport = async () => {
-    // Validation: Agent info must be present
     if (!agentInfo || !agentInfo.name || !agentInfo.id) {
         setIsAgentModalOpen(true);
         alert("Por favor, identifique-se (Nome e Matrícula) antes de exportar os dados.");
         return;
     }
 
+    // Injeta o agente atual em registros antigos/sem dono para exportação
+    const recordsToExport = records.map(record => ({
+        ...record,
+        agentName: record.agentName || agentInfo.name,
+        agentId: record.agentId || agentInfo.id
+    }));
+
     const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
-    const timeStr = now.toTimeString().slice(0, 5).replace(':', '-'); // HH-MM
+    const dateStr = now.toISOString().slice(0, 10);
+    const timeStr = now.toTimeString().slice(0, 5).replace(':', '-');
     
-    // Sanitize filename
     const sanitizedName = agentInfo.name.replace(/[^a-zA-Z0-9]/g, '_');
     const sanitizedId = agentInfo.id.replace(/[^a-zA-Z0-9]/g, '-');
 
     const fileName = `CensoPet_${sanitizedName}_${sanitizedId}_${dateStr}_${timeStr}.json`;
     
-    const dataStr = JSON.stringify(records, null, 2);
+    const dataStr = JSON.stringify(recordsToExport, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const file = new File([blob], fileName, { type: "application/json" });
 
-    // Try native share API (Mobile friendly)
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({
@@ -206,11 +214,10 @@ const App: React.FC = () => {
         });
         return;
       } catch (e) {
-        console.log("Share failed or cancelled, falling back to download", e);
+        console.log("Share failed or cancelled", e);
       }
     }
     
-    // Fallback to direct download
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -221,35 +228,38 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleImport = async (file: File) => {
+  // Função centralizada para processar dados importados (seja por Arquivo ou QR)
+  const processImportedData = (importedData: any[]) => {
+      if (!Array.isArray(importedData)) {
+          alert("Formato de dados inválido.");
+          return;
+      }
+
+      // Validação básica
+      if (importedData.length > 0 && (!importedData[0].id || !importedData[0].endereco)) {
+           alert("Os dados não parecem ser registros válidos do CensoPet.");
+           return;
+      }
+
+      const currentIds = new Set(records.map(r => r.id));
+      const newRecords = importedData.filter((r: CensusRecord) => {
+          return r.id && r.endereco && !currentIds.has(r.id);
+      });
+
+      if (newRecords.length > 0) {
+          setRecords(prev => [...prev, ...newRecords]);
+          alert(`Sucesso!\n\n${newRecords.length} novos registros adicionados.\n${importedData.length - newRecords.length} duplicatas ignoradas.`);
+      } else {
+          alert("Nenhum registro novo encontrado. Todos os dados já existem no dispositivo.");
+      }
+  };
+
+  // Wrapper para lidar com o input de arquivo
+  const handleFileImport = async (file: File) => {
     try {
         const text = await file.text();
         const importedData = JSON.parse(text);
-        
-        if (!Array.isArray(importedData)) {
-            alert("Arquivo inválido. O formato deve ser uma lista de registros JSON.");
-            return;
-        }
-
-        // Basic structural validation on the first item if exists
-        if (importedData.length > 0 && (!importedData[0].id || !importedData[0].endereco)) {
-             alert("O arquivo não parece conter dados válidos do CensoPet.");
-             return;
-        }
-
-        const currentIds = new Set(records.map(r => r.id));
-        const newRecords = importedData.filter((r: CensusRecord) => {
-            // Validate essential fields and check duplicates
-            return r.id && r.endereco && !currentIds.has(r.id);
-        });
-
-        if (newRecords.length > 0) {
-            setRecords(prev => [...prev, ...newRecords]);
-            alert(`Importação concluída!\n\n${newRecords.length} novos registros adicionados.\n${importedData.length - newRecords.length} duplicatas ignoradas.`);
-        } else {
-            alert("Nenhum registro novo encontrado. Todos os registros do arquivo já existem neste dispositivo.");
-        }
-
+        processImportedData(importedData);
     } catch (error) {
         console.error("Import error:", error);
         alert("Erro ao ler o arquivo. Verifique se é um JSON válido.");
@@ -285,7 +295,11 @@ const App: React.FC = () => {
               {editingId && step > 0 && <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full font-normal">Editando</span>}
             </h1>
           </div>
-          <ThemeToggle />
+          
+          <div className="flex items-center">
+            <InstallPWA />
+            <ThemeToggle />
+          </div>
         </div>
 
         {/* Progress Bar (Only during collection) */}
@@ -307,7 +321,8 @@ const App: React.FC = () => {
               agentInfo={agentInfo}
               onStartNew={startNewCensus}
               onExport={handleExport}
-              onImport={handleImport}
+              onImport={processImportedData} // Passa a função que aceita dados do QR
+              onImportFile={handleFileImport} // Passa a função que aceita File
               onClear={handleClear}
               onEdit={handleEditRecord}
               onDelete={handleDeleteRecord}

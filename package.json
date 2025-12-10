@@ -3,19 +3,26 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "homepage": "https://welbstercczdev.github.io/censopet-sjc",
   "scripts": {
-  "dev": "vite",
-  "build": "tsc && vite build",
-  "preview": "vite preview"
-},
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
+  },
   "dependencies": {
+    "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.555.0",
+    "lz-string": "^1.5.0",
     "react": "^19.2.1",
-    "react-dom": "^19.2.1"
+    "react-dom": "^19.2.1",
+    "react-qr-code": "^2.0.18"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "gh-pages": "^6.3.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
     "vite-plugin-pwa": "^1.2.0"
