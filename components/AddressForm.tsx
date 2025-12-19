@@ -1,7 +1,11 @@
+// --- START OF FILE src/components/AddressForm.tsx ---
+
 import React, { useState, useEffect } from 'react';
 import { AddressData } from '../types';
 import { fetchAddressByCep } from '../services/cepService';
 import { MapPin, Search, Loader2, WifiOff, RotateCcw } from 'lucide-react';
+import AutocompleteInput from './AutocompleteInput';
+import { bairrosSJC } from '../data/bairros';
 
 interface AddressFormProps {
   data: AddressData;
@@ -25,7 +29,7 @@ const AddressForm: React.FC<AddressFormProps> = ({ data, onUpdate, onNext }) => 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Initial check logic
+    // Verificação inicial
     if (isOffline) {
         setManualMode(true);
     }
@@ -58,14 +62,16 @@ const AddressForm: React.FC<AddressFormProps> = ({ data, onUpdate, onNext }) => 
         uf: ''
     });
     setManualMode(false);
-    document.getElementById('cep')?.focus();
+    setError(null);
+    // Pequeno hack para focar no CEP após o estado atualizar
+    setTimeout(() => document.getElementById('cep')?.focus(), 100);
   };
 
   const handleCepBlur = async () => {
     const rawCep = data.cep.replace(/\D/g, '');
     if (rawCep.length !== 8) return;
 
-    // Skip fetch if offline
+    // Se estiver offline, força o modo manual imediatamente
     if (isOffline) {
         setManualMode(true);
         setError(null);
@@ -93,7 +99,7 @@ const AddressForm: React.FC<AddressFormProps> = ({ data, onUpdate, onNext }) => 
         onUpdate({ ...data, logradouro: '', bairro: '' });
       }
     } catch (e) {
-      // Graceful degradation for API errors
+      // Falha graciosa para modo manual
       setError("Não foi possível buscar o CEP. Preencha manualmente.");
       setManualMode(true);
     } finally {
@@ -101,7 +107,10 @@ const AddressForm: React.FC<AddressFormProps> = ({ data, onUpdate, onNext }) => 
     }
   };
 
+  // Validação para habilitar o botão "Próximo"
   const isValid = data.cep.length === 9 && data.logradouro.length > 0 && data.numero.length > 0 && data.bairro.length > 0;
+  
+  // Verifica se tem algum dado preenchido para mostrar o botão de limpar
   const hasData = data.cep || data.logradouro || data.bairro;
 
   return (
@@ -148,6 +157,7 @@ const AddressForm: React.FC<AddressFormProps> = ({ data, onUpdate, onNext }) => 
               onBlur={handleCepBlur}
               placeholder="00000-000"
               maxLength={9}
+              inputMode="numeric"
               className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
             />
             <div className="absolute right-3 top-2.5 text-gray-400">
@@ -188,18 +198,17 @@ const AddressForm: React.FC<AddressFormProps> = ({ data, onUpdate, onNext }) => 
             />
           </div>
 
-          {/* Bairro */}
+          {/* Bairro com Autocomplete */}
           <div>
-            <label htmlFor="bairro" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Bairro <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
+            <AutocompleteInput
               id="bairro"
+              label="Bairro"
               value={data.bairro}
-              onChange={(e) => handleChange('bairro', e.target.value)}
+              onChange={(val) => handleChange('bairro', val)}
+              options={bairrosSJC}
+              required
               disabled={!manualMode && data.bairro.length > 0 && !loading}
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 disabled:bg-gray-100 dark:disabled:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
+              placeholder="Digite para buscar..."
             />
           </div>
         </div>

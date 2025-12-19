@@ -1,4 +1,4 @@
-// --- START OF FILE App.tsx ---
+// --- START OF FILE src/App.tsx ---
 
 import React, { useState, useEffect } from 'react';
 import AddressForm from './components/AddressForm';
@@ -8,11 +8,13 @@ import Dashboard from './components/Dashboard';
 import ThemeToggle from './components/ThemeToggle';
 import AgentConfig from './components/AgentConfig';
 import InstallPWA from './components/InstallPWA';
+import ConfirmModal from './components/ConfirmModal';
+import Toast, { ToastType } from './components/Toast';
 import { CensusFormData, CensusRecord, AgentInfo } from './types';
 import { ClipboardList, ChevronLeft } from 'lucide-react';
 import { uuidv7 } from './services/uuidService';
 
-// Estado inicial com suporte a vacinação
+// Estado inicial completo, incluindo os campos de vacinação
 const getInitialData = (): CensusFormData => ({
   endereco: {
     cep: '',
@@ -34,22 +36,44 @@ const STORAGE_KEY = 'censopet_sjc_records';
 const AGENT_STORAGE_KEY = 'censopet_sjc_agent';
 
 const App: React.FC = () => {
-  // Step 0 = Dashboard, 1 = Address, 2 = Animals, 3 = Summary
+  // Navegação: 0 = Dashboard, 1 = Endereço, 2 = Animais, 3 = Resumo
   const [step, setStep] = useState<number>(0);
   const [formData, setFormData] = useState<CensusFormData>(getInitialData());
   const [records, setRecords] = useState<CensusRecord[]>([]);
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
+  
+  // Estados de Interface
   const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Estado do Modal de Confirmação Customizado
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    action: () => {},
+    isDestructive: false
+  });
 
-  // Load records and agent info from local storage on startup
+  // Estado do Toast (Notificação)
+  const [toast, setToast] = useState<{ message: string | null, type: ToastType }>({
+    message: null,
+    type: 'success'
+  });
+
+  // Função auxiliar para disparar notificações
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ message, type });
+  };
+
+  // Carregar dados salvos ao iniciar
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
         setRecords(JSON.parse(saved));
       } catch (e) {
-        console.error("Error parsing saved records", e);
+        console.error("Erro ao ler registros salvos", e);
       }
     }
 
@@ -58,23 +82,23 @@ const App: React.FC = () => {
       try {
         setAgentInfo(JSON.parse(savedAgent));
       } catch (e) {
-        console.error("Error parsing saved agent", e);
+        console.error("Erro ao ler agente salvo", e);
       }
     }
   }, []);
 
-  // Persist records when changed
+  // Salvar automaticamente quando houver mudanças
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
   }, [records]);
 
-  // Persist agent info
   useEffect(() => {
     if (agentInfo) {
       localStorage.setItem(AGENT_STORAGE_KEY, JSON.stringify(agentInfo));
     }
   }, [agentInfo]);
 
+  // Atualizadores de Estado do Formulário
   const updateFormData = (newData: Partial<CensusFormData>) => {
     setFormData(prev => ({ ...prev, ...newData }));
   };
@@ -83,15 +107,15 @@ const App: React.FC = () => {
     updateFormData({ endereco: addressData });
   };
 
+  // Iniciar Nova Coleta
   const startNewCensus = () => {
     setEditingId(null);
     
-    // Smart pre-fill: Check if there is a previous record to copy address from
+    // Recurso Inteligente: Copiar endereço do último registro para agilizar
     if (records.length > 0) {
       const lastRecord = records[records.length - 1];
       const initialData = getInitialData();
       
-      // Copy address fields but clear number and complement
       setFormData({
         ...initialData,
         endereco: {
@@ -107,6 +131,7 @@ const App: React.FC = () => {
     setStep(1);
   };
 
+  // Editar Registro Existente
   const handleEditRecord = (id: string) => {
     const recordToEdit = records.find(r => r.id === id);
     if (recordToEdit) {
@@ -120,16 +145,26 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDeleteRecord = (id: string) => {
-    if (window.confirm("Deseja realmente excluir este registro?")) {
+  // Excluir Registro (Com Modal de Confirmação)
+  const requestDeleteRecord = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Excluir Registro',
+      message: 'Deseja realmente excluir este registro? Esta ação não pode ser desfeita.',
+      isDestructive: true,
+      action: () => {
         setRecords(prev => prev.filter(r => r.id !== id));
-    }
+        showToast('Registro excluído com sucesso.', 'success');
+      }
+    });
   };
 
+  // Salvar Coleta (Novo ou Edição)
   const handleSave = () => {
-    // Validação de segurança: Agente deve estar identificado para novos registros
+    // Validação: Agente é obrigatório
     if (!agentInfo && !editingId) {
         setIsAgentModalOpen(true);
+        showToast('Identifique-se antes de iniciar.', 'info');
         return; 
     }
 
@@ -137,36 +172,38 @@ const App: React.FC = () => {
     const currentAgentId = agentInfo?.id || 'N/A';
 
     if (editingId) {
-        // Update existing record
+        // Atualizar existente
         setRecords(prev => prev.map(record => {
             if (record.id === editingId) {
                 return {
                     ...record,
                     ...formData,
-                    timestamp: new Date().toISOString(),
+                    timestamp: new Date().toISOString(), // Atualiza data de modificação
                     deviceInfo: navigator.userAgent,
-                    // Mantém o agente original se existir, senão assume o atual
+                    // Preserva o agente original se existir
                     agentName: record.agentName || currentAgentName,
                     agentId: record.agentId || currentAgentId
                 };
             }
             return record;
         }));
+        showToast('Registro atualizado!', 'success');
     } else {
-        // Create new record using UUIDv7
+        // Criar novo com UUIDv7 (Segurança e Ordenação Temporal)
         const newRecord: CensusRecord = {
             ...formData,
-            id: uuidv7(), // Usando UUIDv7 para ordenação temporal e unicidade
+            id: uuidv7(), 
             timestamp: new Date().toISOString(),
             deviceInfo: navigator.userAgent,
             agentName: currentAgentName,
             agentId: currentAgentId
         };
         setRecords(prev => [...prev, newRecord]);
+        showToast('Coleta salva com sucesso!', 'success');
     }
     
     setEditingId(null);
-    setStep(0); // Go back to dashboard
+    setStep(0); // Volta para o Dashboard
   };
 
   const handleBackToDashboard = () => {
@@ -178,14 +215,15 @@ const App: React.FC = () => {
     }
   };
 
+  // Exportar para JSON (Arquivo ou Compartilhamento Nativo)
   const handleExport = async () => {
     if (!agentInfo || !agentInfo.name || !agentInfo.id) {
         setIsAgentModalOpen(true);
-        alert("Por favor, identifique-se (Nome e Matrícula) antes de exportar os dados.");
+        showToast('Identifique-se antes de exportar.', 'error');
         return;
     }
 
-    // Injeta o agente atual em registros antigos/sem dono para exportação
+    // Injeta o agente atual em registros antigos/sem dono
     const recordsToExport = records.map(record => ({
         ...record,
         agentName: record.agentName || agentInfo.name,
@@ -196,6 +234,7 @@ const App: React.FC = () => {
     const dateStr = now.toISOString().slice(0, 10);
     const timeStr = now.toTimeString().slice(0, 5).replace(':', '-');
     
+    // Sanitiza nome do arquivo
     const sanitizedName = agentInfo.name.replace(/[^a-zA-Z0-9]/g, '_');
     const sanitizedId = agentInfo.id.replace(/[^a-zA-Z0-9]/g, '-');
 
@@ -205,7 +244,7 @@ const App: React.FC = () => {
     const blob = new Blob([dataStr], { type: "application/json" });
     const file = new File([blob], fileName, { type: "application/json" });
 
-    // Tenta compartilhamento nativo primeiro
+    // Tenta usar compartilhamento nativo do Android/iOS
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({
@@ -219,7 +258,7 @@ const App: React.FC = () => {
       }
     }
     
-    // Fallback para download direto
+    // Fallback: Download direto no navegador
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -228,21 +267,23 @@ const App: React.FC = () => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    showToast('Arquivo gerado com sucesso!', 'success');
   };
 
-  // Função centralizada para processar dados importados
+  // Processamento de Importação de Arquivo
   const processImportedData = (importedData: any[]) => {
       if (!Array.isArray(importedData)) {
-          alert("Formato de dados inválido.");
+          showToast("Formato de arquivo inválido.", 'error');
           return;
       }
 
-      // Validação básica
+      // Validação simples
       if (importedData.length > 0 && (!importedData[0].id || !importedData[0].endereco)) {
-           alert("Os dados não parecem ser registros válidos do CensoPet.");
+           showToast("Os dados não parecem ser do CensoPet.", 'error');
            return;
       }
 
+      // Evita duplicatas baseadas no ID
       const currentIds = new Set(records.map(r => r.id));
       const newRecords = importedData.filter((r: CensusRecord) => {
           return r.id && r.endereco && !currentIds.has(r.id);
@@ -250,13 +291,12 @@ const App: React.FC = () => {
 
       if (newRecords.length > 0) {
           setRecords(prev => [...prev, ...newRecords]);
-          alert(`Sucesso!\n\n${newRecords.length} novos registros adicionados.\n${importedData.length - newRecords.length} duplicatas ignoradas.`);
+          showToast(`${newRecords.length} registros importados!`, 'success');
       } else {
-          alert("Nenhum registro novo encontrado. Todos os dados já existem no dispositivo.");
+          showToast("Nenhum registro novo encontrado.", 'info');
       }
   };
 
-  // Wrapper para lidar com o input de arquivo
   const handleFileImport = async (file: File) => {
     try {
         const text = await file.text();
@@ -264,21 +304,47 @@ const App: React.FC = () => {
         processImportedData(importedData);
     } catch (error) {
         console.error("Import error:", error);
-        alert("Erro ao ler o arquivo. Verifique se é um JSON válido.");
+        showToast("Erro ao ler o arquivo JSON.", 'error');
     }
   };
 
-  const handleClear = () => {
-    if (window.confirm("Tem certeza que deseja apagar todos os registros salvos neste dispositivo? Esta ação não pode ser desfeita.")) {
-      setRecords([]);
-    }
+  // Limpar Tudo (Com Modal de Confirmação)
+  const requestClearAll = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Apagar Tudo?',
+      message: 'Tem certeza que deseja apagar todos os registros deste dispositivo? Esta ação é irreversível.',
+      isDestructive: true,
+      action: () => {
+        setRecords([]);
+        showToast('Todos os registros foram apagados.', 'info');
+      }
+    });
   };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 transition-colors duration-300">
+      
+      {/* Componente Global de Notificações */}
+      <Toast 
+        message={toast.message} 
+        type={toast.type} 
+        onClose={() => setToast({ ...toast, message: null })} 
+      />
+
+      {/* Modal de Confirmação Global */}
+      <ConfirmModal 
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmModal.action}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        isDestructive={confirmModal.isDestructive}
+      />
+
       <div className="w-full max-w-md md:max-w-lg bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden border border-gray-100 dark:border-gray-800 flex flex-col">
         
-        {/* Header */}
+        {/* Cabeçalho */}
         <div className="bg-white dark:bg-gray-900 p-6 flex items-center justify-between border-b border-gray-100 dark:border-gray-800 sticky top-0 z-10">
           <div className="flex items-center space-x-2">
             {step > 0 && (
@@ -304,7 +370,7 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Progress Bar (Only during collection) */}
+        {/* Barra de Progresso (Apenas durante cadastro) */}
         {step > 0 && (
             <div className="w-full bg-gray-100 dark:bg-gray-800 h-1.5">
                 <div 
@@ -314,7 +380,7 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {/* Content Area */}
+        {/* Área de Conteúdo Principal */}
         <div className="p-6 md:p-8 flex-grow overflow-y-auto max-h-[calc(100vh-140px)] scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
           
           {step === 0 && (
@@ -324,9 +390,9 @@ const App: React.FC = () => {
               onStartNew={startNewCensus}
               onExport={handleExport}
               onImportFile={handleFileImport}
-              onClear={handleClear}
+              onClear={requestClearAll}
               onEdit={handleEditRecord}
-              onDelete={handleDeleteRecord}
+              onDelete={requestDeleteRecord}
               onOpenAgentConfig={() => setIsAgentModalOpen(true)}
             />
           )}
@@ -357,17 +423,20 @@ const App: React.FC = () => {
           )}
         </div>
         
-        {/* Footer info */}
+        {/* Rodapé */}
         <div className="bg-gray-50 dark:bg-gray-950 p-4 text-center text-xs text-gray-400 dark:text-gray-600 border-t border-gray-100 dark:border-gray-800">
             &copy; {new Date().getFullYear()} CensoPet SJC v1.0
         </div>
       </div>
 
-      {/* Modals */}
+      {/* Modal de Configuração do Agente */}
       <AgentConfig 
         isOpen={isAgentModalOpen} 
         onClose={() => setIsAgentModalOpen(false)} 
-        onSave={(info) => setAgentInfo(info)}
+        onSave={(info) => {
+          setAgentInfo(info);
+          showToast('Agente identificado!', 'success');
+        }}
         initialData={agentInfo}
       />
     </div>
